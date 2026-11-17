@@ -12,16 +12,19 @@ import {
 } from "recharts";
 import { supabase } from "@/lib/supabase";
 
+// Map the API's region codes to names shown in the selector and dashboard
 const REGIONS = [
   { code: "NO1", name: "Øst-Norge" },
   { code: "NO2", name: "Sør-Norge" },
   { code: "NO3", name: "Midt-Norge" },
   { code: "NO4", name: "Nord-Norge" },
   { code: "NO5", name: "Vest-Norge" },
-];
+] as const;
 
+// Derive the allowed region codes from the configured region list
 type RegionCode = (typeof REGIONS)[number]["code"];
 
+// Shape of each price record selected from Supabase
 type PriceRow = {
   region: string;
   time_start: string;
@@ -29,6 +32,7 @@ type PriceRow = {
   power_price: number;
 };
 
+// Convert a Date or ISO string to a YYYY-MM-DD key in the Oslo time zone
 function osloDateKey(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -43,7 +47,9 @@ function osloDateKey(value: Date | string) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
+// Format an ISO timestamp to a 24-hour clock in the Oslo time zone
 function formatHour(value: string) {
+  // Always display API timestamps in Norwegian local time.
   return new Intl.DateTimeFormat("nb-NO", {
     timeZone: "Europe/Oslo",
     hour: "2-digit",
@@ -51,7 +57,9 @@ function formatHour(value: string) {
   }).format(new Date(value));
 }
 
+// Format a YYYY-MM-DD key to a short weekday and date in the Oslo time zone
 function formatDay(dayKey: string) {
+  // Use midday UTC to keep date-only values on the intended Oslo calendar day
   return new Intl.DateTimeFormat("nb-NO", {
     timeZone: "Europe/Oslo",
     weekday: "short",
@@ -60,6 +68,7 @@ function formatDay(dayKey: string) {
   }).format(new Date(`${dayKey}T12:00:00Z`));
 }
 
+// Format a number to a Norwegian price string with a fixed number of decimals
 function formatPrice(value: number, decimals = 3) {
   return new Intl.NumberFormat("nb-NO", {
     minimumFractionDigits: decimals,
@@ -67,23 +76,28 @@ function formatPrice(value: number, decimals = 3) {
   }).format(value);
 }
 
+// Adjust the API price to include VAT where applicable
 function priceIncludingVat(price: number, region: RegionCode) {
+  // The API price is VAT-exclusive except in the NO4 price area
   return region === "NO4" ? price : price * 1.25;
 }
 
 export default function HomePage() {
   const [region, setRegion] = useState<RegionCode>("NO1");
   const [rows, setRows] = useState<PriceRow[]>([]);
+  // A local clock lets the current-hour price update without reloading the page
   const [now, setNow] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setNow(Date.now());
+    // Update the local clock every 30 seconds to keep the current price accurate
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
 
+  // Reload prices when the selected region changes; ignore stale responses
   useEffect(() => {
     let cancelled = false;
 
@@ -91,6 +105,7 @@ export default function HomePage() {
       setLoading(true);
       setError(null);
 
+      // Query the last 32 days of prices to ensure we have a full 30-day history
       const cutoff = new Date(Date.now() - 32 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error: queryError } = await supabase
         .from("power_prices")
@@ -118,6 +133,7 @@ export default function HomePage() {
   }, [region]);
 
   const todayKey = osloDateKey(new Date(now));
+  // Generate the 30 calendar dates in ascending order
   const dayKeys = useMemo(() => {
     const today = new Date(`${todayKey}T00:00:00Z`);
     return Array.from({ length: 30 }, (_, index) => {
@@ -127,11 +143,13 @@ export default function HomePage() {
     });
   }, [todayKey]);
 
+  // Keep only records that belong to today in the Oslo time zone
   const todayRows = useMemo(
     () => rows.filter((row) => osloDateKey(row.time_start) === todayKey),
     [rows, todayKey]
   );
 
+  // Prepare today's hourly series with VAT-adjusted values for display
   const todayChartData = useMemo(
     () =>
       todayRows.map((row) => ({
@@ -141,6 +159,7 @@ export default function HomePage() {
     [region, todayRows]
   );
 
+  // Group hourly records by Oslo date and calculate one average per day
   const averageChartData = useMemo(() => {
     const pricesByDay = new Map<string, number[]>();
     for (const row of rows) {
@@ -164,6 +183,7 @@ export default function HomePage() {
     });
   }, [dayKeys, region, rows]);
 
+  // Find the price interval that contains the current time
   const currentRow = useMemo(
     () =>
       rows.find(
@@ -173,6 +193,7 @@ export default function HomePage() {
     [now, rows]
   );
 
+  // Calculate today's average from the hourly records currently available
   const todayAverage =
     todayRows.length > 0
       ? priceIncludingVat(
@@ -215,7 +236,6 @@ export default function HomePage() {
       </header>
 
       <section className="page-intro">
-        <p className="eyebrow">STRØMPRISER I NORGE</p>
         <h1>Oversikt over strømprisen</h1>
         <p className="intro-copy">
           Følg dagens timepriser og se hvordan prisnivået har utviklet seg den
@@ -230,10 +250,6 @@ export default function HomePage() {
               <p className="card-kicker">PRIS AKKURAT NÅ</p>
               <h2>{selectedRegion?.name ?? region}</h2>
             </div>
-            <span className="live-indicator">
-              <span className="live-dot" />
-              {currentRow ? "Gjeldende time" : "Oppdateres daglig"}
-            </span>
           </div>
           <div className="current-price">
             {loading
@@ -275,10 +291,11 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Show the selected region's hourly prices and 30-day daily averages. */}
       <section className="charts-grid" aria-label="Prisgrafer">
         <ChartCard
           title="I dag, time for time"
-          description="Timepriser, inkludert mva der det gjelder."
+          description=""
           loading={loading}
           empty={!loading && todayChartData.length === 0}
           emptyMessage="Ingen priser for i dag ennå."
@@ -325,7 +342,7 @@ export default function HomePage() {
 
         <ChartCard
           title="Døgnsnitt · siste 30 dager"
-          description="Daglig snitt, inkludert mva der det gjelder."
+          description=""
           loading={loading}
           empty={!loading && rows.length === 0}
           emptyMessage="Ingen historiske priser for dette området ennå."
@@ -372,13 +389,14 @@ export default function HomePage() {
       </section>
 
       <footer className="page-footer">
-        <span>Strømpriser for norske prisområder</span>
+        <span>Strømpriser hentet fra hvakosterstrommen.no</span>
         <span>Oppdatert daglig · inkl. mva der det gjelder</span>
       </footer>
     </main>
   );
 }
 
+// Share the card layout and loading/empty states between both charts.
 function ChartCard({
   title,
   description,
@@ -415,6 +433,7 @@ function ChartCard({
   );
 }
 
+// Keep tooltip styling consistent across the charts.
 const tooltipStyle = {
   border: "1px solid #e6ebf2",
   borderRadius: 12,

@@ -19,6 +19,7 @@ def main() -> None:
             all_rows.extend(to_rows(raw, region))
         day += timedelta(days=1)
 
+    # Upsert in batches of 500 to avoid hitting Supabase's row limit
     for start in range(0, len(all_rows), 500):
         upsert_prices(all_rows[start : start + 500])
 

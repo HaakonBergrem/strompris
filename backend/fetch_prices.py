@@ -1,6 +1,5 @@
 """
-Fetches hourly electricity prices from hvakosterstrommen.no
-and stores them in Supabase.
+Fetch hourly power prices for today for each region in Norway from the "hvakosterstrommen.no" API and upserts them into a Supabase table.
 
 """
 
@@ -12,6 +11,7 @@ import requests
 from dotenv import load_dotenv
 from supabase import create_client
 
+# Load environment variables from .env file
 load_dotenv()
 
 # Config supabase connection
@@ -56,7 +56,7 @@ def to_rows(raw: list[dict], region: str) -> list[dict]:
         })
     return rows
 
-# Inserts rows into Supabase
+# Upserts rows into Supabase
 def upsert_prices(rows: list[dict]) -> None:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
