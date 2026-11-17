@@ -2,8 +2,8 @@ name: Fetch electricity prices
 
 on:
   schedule:
-    # Every day at 13:00 UTC (14:00 Norwegian winter time / 15:00 summer time)
-    - cron: "0 13 * * *"
+    # 23:05 UTC is 00:05 in Norway during winter and 01:05 during summer.
+    - cron: "5 23 * * *"
   workflow_dispatch: # allows manual run from GitHub UI
 
 jobs:
