@@ -1,20 +1,21 @@
 """
-Fetches hourly electricity prices from hvakosterstrommen.no
-and stores them in Supabase.
+Fetch hourly power prices for today for each region in Norway from the "hvakosterstrommen.no" API and upserts them into a Supabase table.
 
 """
 
 import os
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
 
+# Load environment variables from .env file
 load_dotenv()
 
 # Config supabase connection
-REGION = "NO1"  # can be increased to all regions later
+REGIONS = ("NO1", "NO2", "NO3", "NO4", "NO5")
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 TABLE_NAME = "power_prices"
@@ -55,7 +56,7 @@ def to_rows(raw: list[dict], region: str) -> list[dict]:
         })
     return rows
 
-# Inserts rows into Supabase
+# Upserts rows into Supabase
 def upsert_prices(rows: list[dict]) -> None:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -71,12 +72,12 @@ def upsert_prices(rows: list[dict]) -> None:
 
 
 def main() -> None:
-    today = date.today()
-    print(f"Fetching prices for {today} / {REGION}")
-
-    raw = fetch_prices(today, REGION)
-    rows = to_rows(raw, REGION)
-    upsert_prices(rows)
+    today = datetime.now(ZoneInfo("Europe/Oslo")).date()
+    for region in REGIONS:
+        print(f"Fetching prices for {today} / {region}")
+        raw = fetch_prices(today, region)
+        rows = to_rows(raw, region)
+        upsert_prices(rows)
 
     print("Done")
 
