@@ -5,6 +5,7 @@ Fetch hourly power prices for today for each region in Norway from the "hvakoste
 
 import os
 from datetime import date, datetime
+from math import isfinite
 from zoneinfo import ZoneInfo
 
 import requests
@@ -16,12 +17,13 @@ load_dotenv()
 
 # Config supabase connection
 REGIONS = ("NO1", "NO2", "NO3", "NO4", "NO5")
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 TABLE_NAME = "power_prices"
 
 # Builds API URL for a given date and region, and returns a JSON object from "hvakosterstrommen.no"
 def build_api_url(day: date, region: str) -> str:
+    if region not in REGIONS:
+        raise ValueError(f"Unsupported price region: {region}")
+
     return (
         f"https://www.hvakosterstrommen.no/api/v1/prices/"
         f"{day.year}/{day.month:02d}-{day.day:02d}_{region}.json"
@@ -41,6 +43,29 @@ def fetch_prices(day: date, region: str) -> list[dict]:
     if not isinstance(data, list) or len(data) == 0:
         raise ValueError(f"Unexpected API response for {region} on {day}")
 
+    for index, item in enumerate(data):
+        if not isinstance(item, dict):
+            raise ValueError(f"Invalid price record at index {index}")
+
+        price = item.get("NOK_per_kWh")
+        valid_price = isinstance(price, (int, float)) and not isinstance(price, bool)
+        if valid_price:
+            try:
+                valid_price = isfinite(price)
+            except OverflowError:
+                valid_price = False
+        if not valid_price:
+            raise ValueError(f"Invalid price value at index {index}")
+
+        try:
+            time_start = datetime.fromisoformat(item["time_start"])
+            time_end = datetime.fromisoformat(item["time_end"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Invalid time range at index {index}") from error
+
+        if time_end <= time_start:
+            raise ValueError(f"Invalid time range at index {index}")
+
     print(f"Got {len(data)} hourly rows")
     return data
 
@@ -58,17 +83,26 @@ def to_rows(raw: list[dict], region: str) -> list[dict]:
 
 # Upserts rows into Supabase
 def upsert_prices(rows: list[dict]) -> None:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    if not rows:
+        raise ValueError("Cannot upsert an empty list of prices")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_role_key:
+        raise RuntimeError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured"
+        )
+
+    supabase = create_client(supabase_url, service_role_key)
 
     # Uses upsert on (region, time_start) so re-runs do not create duplicates
-    result = (
+    (
         supabase.table(TABLE_NAME)
         .upsert(rows, on_conflict="region,time_start")
         .execute()
     )
 
     print(f"Upserted {len(rows)} rows into '{TABLE_NAME}'")
-    return result
 
 
 def main() -> None:
