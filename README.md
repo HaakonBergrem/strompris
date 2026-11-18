@@ -1,30 +1,36 @@
-# Strømpris
+# Strømblikk
 
-## Tester
+Strømblikk is a Norwegian electricity-price dashboard. It displays hourly prices and recent daily averages for Norway's five price regions, using data stored in Supabase.
+The data is retrieved from [hvakosterstrommen.no API](https://www.hvakosterstrommen.no/).
+## Project structure
 
-Backend-testene bruker Pythons innebygde `unittest` og kan kjøres fra `backend`:
+- [`frontend/`](./frontend/README.md) contains the Next.js dashboard and frontend tests.
+- [`backend/`](./backend/README.md) contains the Python price-fetching scripts and backend tests.
+- [`.github/workflows/`](./.github/workflows/) contains the automated test and scheduled price-fetch workflows.
 
-```powershell
-python -m unittest discover -s tests -v
-```
+## Quick start
 
-Frontend-testene, ESLint og TypeScript-sjekken kjøres fra `frontend`:
+1. Configure the frontend environment variables described in [`frontend/README.md`](./frontend/README.md).
+2. Install and start the frontend:
 
-```powershell
-npm ci
-npm test
-npm run lint
-npx tsc --noEmit
-```
+   ```powershell
+   cd frontend
+   npm ci
+   npm run dev
+   ```
 
-GitHub Actions kjører begge testsettene, lint og typesjekk automatisk ved push
-og pull request. CI-jobbene trenger ikke Supabase-hemmeligheter.
+3. Open [http://localhost:3000](http://localhost:3000).
 
-## Supabase-hemmeligheter
+The dashboard requires price records in the Supabase `power_prices` table. See [`backend/README.md`](./backend/README.md) for backend setup and data-fetching instructions.
 
-- Hold `SUPABASE_SERVICE_ROLE_KEY` i GitHub Actions Secrets eller i en lokal
-  `backend/.env`; ikke legg den i frontend eller i Git.
-- Frontendens `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` er offentlig av design.
-  Begrens derfor tilgang til `power_prices` med Supabase Row Level Security
-  (RLS) og en lesetillatelse som bare gir tilgang til nødvendige prisdata.
-- Backendens `.env`, virtuelle miljøer og Python-bytecode er ignorert av Git.
+## Continuous integration
+
+The `Test` GitHub Actions workflow runs on pushes and pull requests. It runs the Python unit tests, frontend tests, production dependency audit, lint, TypeScript check, and production build. These checks do not require real Supabase credentials.
+
+The separate `Fetch electricity prices` workflow runs on its daily schedule and can also be started manually in GitHub Actions. It requires the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` repository secrets.
+
+## Security
+
+- Never commit `.env` files, service-role keys, or other credentials.
+- Keep the Supabase service-role key in the backend environment or GitHub Actions secrets only. Never expose it to the frontend.
+- The frontend Supabase URL and publishable key are public client configuration. Protect table access with Supabase Row Level Security (RLS), and allow only the reads the dashboard needs.
