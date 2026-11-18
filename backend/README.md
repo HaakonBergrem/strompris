@@ -1,6 +1,6 @@
 # Strømblikk Backend
 
-The backend fetches hourly electricity prices from the [hvakosterstrommen.no API](https://www.hvakosterstrommen.no/) for Norway's five price areas (NO1–NO5) and upserts them into Supabase.
+The backend fetches hourly electricity prices from the [hvakosterstrommen.no API](https://www.hvakosterstrommen.no/strompris-api) for Norway's five price areas (NO1–NO5) and upserts them into Supabase.
 
 ## Requirements
 
@@ -70,14 +70,3 @@ python -m unittest discover -s tests -v
 ```
 
 The tests cover API-data validation, Supabase upsert behavior, date-window calculation, and batch handling. They do not require live API or Supabase credentials.
-
-## Scheduled GitHub Actions workflow
-
-The `Fetch electricity prices` workflow runs daily at `23:05 UTC` and can also be started manually with `workflow_dispatch`. This UTC time corresponds to 00:05 in Norway during winter and 01:05 during summer. GitHub may delay scheduled runs, so the exact start time is not guaranteed.
-
-Add these repository secrets under **Settings → Secrets and variables → Actions**:
-
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-The workflow runs `python fetch_prices.py`; it does not run the 30-day backfill script. The separate `Test` workflow runs backend unit tests on pushes and pull requests and does not need these secrets.

@@ -55,7 +55,3 @@ Run these commands from `frontend/`:
 - The hourly chart marks the hour that is currently in progress.
 
 The frontend queries up to 32 days of data to prepare the 30-day view. If prices are missing, check that the backend has populated `power_prices` and that the Supabase RLS policy allows the required read.
-
-## CI
-
-The repository's GitHub Actions `Test` workflow runs frontend tests, the production dependency audit, lint, TypeScript checking, and a production build on pushes and pull requests. The CI build uses placeholder public Supabase values; repository secrets are not needed for this workflow.

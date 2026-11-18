@@ -1,7 +1,7 @@
 # Strømblikk
 
 Strømblikk is a Norwegian electricity-price dashboard. It displays hourly prices and recent daily averages for Norway's five price regions, using data stored in Supabase.
-The data is retrieved from [hvakosterstrommen.no API](https://www.hvakosterstrommen.no/).
+The data is retrieved from [hvakosterstrommen.no API](https://www.hvakosterstrommen.no/strompris-api).
 ## Project structure
 
 - [`frontend/`](./frontend/README.md) contains the Next.js dashboard and frontend tests.
