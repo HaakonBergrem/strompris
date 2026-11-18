@@ -6,6 +6,9 @@ on:
     - cron: "5 23 * * *"
   workflow_dispatch: # allows manual run from GitHub UI
 
+permissions:
+  contents: read
+
 jobs:
   fetch:
     runs-on: ubuntu-latest

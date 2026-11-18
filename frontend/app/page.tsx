@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useEffect,
   useMemo,
@@ -19,75 +20,21 @@ import {
   type DotItemDotProps,
 } from "recharts";
 import { supabase } from "@/lib/supabase";
-
-// Map the API's region codes to names shown in the selector and dashboard
-const REGIONS = [
-  { code: "NO1", name: "Øst-Norge" },
-  { code: "NO2", name: "Sør-Norge" },
-  { code: "NO3", name: "Midt-Norge" },
-  { code: "NO4", name: "Nord-Norge" },
-  { code: "NO5", name: "Vest-Norge" },
-] as const;
-
-// Derive the allowed region codes from the configured region list
-type RegionCode = (typeof REGIONS)[number]["code"];
-
-// Shape of each price record selected from Supabase
-type PriceRow = {
-  region: string;
-  time_start: string;
-  time_end: string;
-  power_price: number;
-};
-
-// Convert a Date or ISO string to a YYYY-MM-DD key in the Oslo time zone
-function osloDateKey(value: Date | string) {
-  const date = value instanceof Date ? value : new Date(value);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Oslo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const part = (type: string) =>
-    parts.find((item) => item.type === type)?.value ?? "";
-
-  return `${part("year")}-${part("month")}-${part("day")}`;
-}
-
-// Format an ISO timestamp to a 24-hour clock in the Oslo time zone
-function formatHour(value: string) {
-  return new Intl.DateTimeFormat("nb-NO", {
-    timeZone: "Europe/Oslo",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-// Format a YYYY-MM-DD key to a short weekday and date in the Oslo time zone
-function formatDay(dayKey: string) {
-  // Use midday UTC to keep date-only values on the intended Oslo calendar day
-  return new Intl.DateTimeFormat("nb-NO", {
-    timeZone: "Europe/Oslo",
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  }).format(new Date(`${dayKey}T12:00:00Z`));
-}
-
-// Format a number to a Norwegian price string with a fixed number of decimals
-function formatPrice(value: number, decimals = 3) {
-  return new Intl.NumberFormat("nb-NO", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
-}
-
-// Adjust the API price to include VAT where applicable
-function priceIncludingVat(price: number, region: RegionCode) {
-  // The API price is VAT-exclusive except in the NO4 price area
-  return region === "NO4" ? price : price * 1.25;
-}
+import {
+  REGIONS,
+  formatHour,
+  formatPrice,
+  getAveragePrice,
+  getCurrentPriceRow,
+  getDailyAveragePoints,
+  getHourlyPricePoints,
+  getRecentDayKeys,
+  getRowsForDay,
+  osloDateKey,
+  priceIncludingVat,
+  type PriceRow,
+  type RegionCode,
+} from "@/lib/prices";
 
 export default function HomePage() {
   const [region, setRegion] = useState<RegionCode>("NO1");
@@ -102,10 +49,13 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setNow(Date.now());
+    const initialClock = window.setTimeout(() => setNow(Date.now()), 0);
     // Update the local clock every 30 seconds to keep the current price accurate
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(initialClock);
+      window.clearInterval(timer);
+    };
   }, []);
 
   // Close the region menu when focus moves outside it or Escape is pressed.
@@ -177,76 +127,31 @@ export default function HomePage() {
 
   const todayKey = osloDateKey(new Date(now));
   // Generate the 30 calendar dates in ascending order
-  const dayKeys = useMemo(() => {
-    const today = new Date(`${todayKey}T00:00:00Z`);
-    return Array.from({ length: 30 }, (_, index) => {
-      const day = new Date(today);
-      day.setUTCDate(today.getUTCDate() - (29 - index));
-      return day.toISOString().slice(0, 10);
-    });
-  }, [todayKey]);
+  const dayKeys = useMemo(() => getRecentDayKeys(todayKey), [todayKey]);
 
   // Keep only records that belong to today in the Oslo time zone
   const todayRows = useMemo(
-    () => rows.filter((row) => osloDateKey(row.time_start) === todayKey),
+    () => getRowsForDay(rows, todayKey),
     [rows, todayKey]
   );
 
   // Prepare today's hourly series with VAT-adjusted values for display
   const todayChartData = useMemo(
-    () =>
-      todayRows.map((row) => ({
-        label: formatHour(row.time_start),
-        price: priceIncludingVat(Number(row.power_price), region),
-        isCurrentHour:
-          Date.parse(row.time_start) <= now && Date.parse(row.time_end) > now,
-      })),
+    () => getHourlyPricePoints(todayRows, region, now),
     [now, region, todayRows]
   );
 
   // Group hourly records by Oslo date and calculate one average per day
-  const averageChartData = useMemo(() => {
-    const pricesByDay = new Map<string, number[]>();
-    for (const row of rows) {
-      const key = osloDateKey(row.time_start);
-      if (!dayKeys.includes(key)) continue;
-      const prices = pricesByDay.get(key) ?? [];
-      prices.push(Number(row.power_price));
-      pricesByDay.set(key, prices);
-    }
-
-    return dayKeys.map((key) => {
-      const prices = pricesByDay.get(key) ?? [];
-      const average =
-        prices.length > 0
-          ? priceIncludingVat(
-              prices.reduce((sum, price) => sum + price, 0) / prices.length,
-              region
-            )
-          : null;
-      return { label: formatDay(key), average };
-    });
-  }, [dayKeys, region, rows]);
-
-  // Find the price interval that contains the current time
-  const currentRow = useMemo(
-    () =>
-      rows.find(
-        (row) =>
-          Date.parse(row.time_start) <= now && Date.parse(row.time_end) > now
-      ),
-    [now, rows]
+  const averageChartData = useMemo(
+    () => getDailyAveragePoints(rows, dayKeys, region),
+    [dayKeys, region, rows]
   );
 
+  // Find the price interval that contains the current time
+  const currentRow = useMemo(() => getCurrentPriceRow(rows, now), [now, rows]);
+
   // Calculate today's average from the hourly records currently available
-  const todayAverage =
-    todayRows.length > 0
-      ? priceIncludingVat(
-          todayRows.reduce((sum, row) => sum + Number(row.power_price), 0) /
-            todayRows.length,
-          region
-        )
-      : null;
+  const todayAverage = getAveragePrice(todayRows, region);
 
   const selectedRegion = REGIONS.find((item) => item.code === region);
 
@@ -282,12 +187,12 @@ export default function HomePage() {
   return (
     <main className="dashboard">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Strømblikk hjem">
+        <Link className="brand" href="/" aria-label="Strømblikk hjem">
           <span className="brand-mark" aria-hidden="true">
             S
           </span>
           <span>STRØMBLIKK</span>
-        </a>
+        </Link>
         <div
           className="region-picker"
           ref={regionPickerRef}
