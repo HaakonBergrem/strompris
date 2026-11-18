@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   CartesianGrid,
   Line,
@@ -9,6 +16,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type DotItemDotProps,
 } from "recharts";
 import { supabase } from "@/lib/supabase";
 
@@ -49,7 +57,6 @@ function osloDateKey(value: Date | string) {
 
 // Format an ISO timestamp to a 24-hour clock in the Oslo time zone
 function formatHour(value: string) {
-  // Always display API timestamps in Norwegian local time.
   return new Intl.DateTimeFormat("nb-NO", {
     timeZone: "Europe/Oslo",
     hour: "2-digit",
@@ -84,7 +91,11 @@ function priceIncludingVat(price: number, region: RegionCode) {
 
 export default function HomePage() {
   const [region, setRegion] = useState<RegionCode>("NO1");
+  const [regionMenuOpen, setRegionMenuOpen] = useState(false);
   const [rows, setRows] = useState<PriceRow[]>([]);
+  const regionPickerRef = useRef<HTMLDivElement>(null);
+  const regionTriggerRef = useRef<HTMLButtonElement>(null);
+  const regionMenuRef = useRef<HTMLDivElement>(null);
   // A local clock lets the current-hour price update without reloading the page
   const [now, setNow] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -96,6 +107,38 @@ export default function HomePage() {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Close the region menu when focus moves outside it or Escape is pressed.
+  useEffect(() => {
+    if (!regionMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !regionPickerRef.current?.contains(event.target)
+      ) {
+        setRegionMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setRegionMenuOpen(false);
+        regionTriggerRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    regionMenuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')
+      ?.focus();
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [regionMenuOpen]);
 
   // Reload prices when the selected region changes; ignore stale responses
   useEffect(() => {
@@ -155,8 +198,10 @@ export default function HomePage() {
       todayRows.map((row) => ({
         label: formatHour(row.time_start),
         price: priceIncludingVat(Number(row.power_price), region),
+        isCurrentHour:
+          Date.parse(row.time_start) <= now && Date.parse(row.time_end) > now,
       })),
-    [region, todayRows]
+    [now, region, todayRows]
   );
 
   // Group hourly records by Oslo date and calculate one average per day
@@ -205,6 +250,35 @@ export default function HomePage() {
 
   const selectedRegion = REGIONS.find((item) => item.code === region);
 
+  // Handle keyboard navigation within the region menu
+  function moveRegionMenuFocus(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+
+    const options = Array.from(
+      regionMenuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitemradio"]'
+      ) ?? []
+    );
+    const activeIndex = options.findIndex(
+      (option) => option === document.activeElement
+    );
+    if (options.length === 0) return;
+
+    event.preventDefault();
+    if (event.key === "Home") {
+      options[0].focus();
+    } else if (event.key === "End") {
+      options[options.length - 1].focus();
+    } else {
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex =
+        activeIndex < 0
+          ? 0
+          : (activeIndex + direction + options.length) % options.length;
+      options[nextIndex].focus();
+    }
+  }
+
   return (
     <main className="dashboard">
       <header className="topbar">
@@ -214,25 +288,84 @@ export default function HomePage() {
           </span>
           <span>STRØMBLIKK</span>
         </a>
-        <label className="region-picker">
-          <span className="sr-only">Velg prisområde</span>
-          <span className="region-picker-label">Prisområde</span>
-          <select
-            value={region}
-            onChange={(event) => {
-              const selected = REGIONS.find(
-                (item) => item.code === event.target.value
-              );
-              if (selected) setRegion(selected.code);
-            }}
+        <div
+          className="region-picker"
+          ref={regionPickerRef}
+          onBlur={(event) => {
+            const nextTarget = event.relatedTarget;
+            if (
+              !(nextTarget instanceof Node) ||
+              !event.currentTarget.contains(nextTarget)
+            ) {
+              setRegionMenuOpen(false);
+            }
+          }}
+        >
+          <button
+            ref={regionTriggerRef}
+            className="region-trigger"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={regionMenuOpen}
+            aria-controls="region-menu"
+            onClick={() => setRegionMenuOpen((open) => !open)}
           >
-            {REGIONS.map((item) => (
-              <option key={item.code} value={item.code}>
-                {item.code} · {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            <span className="region-picker-label">Prisområde</span>
+            <span className="region-trigger-value">
+              <span className="region-code-chip">{region}</span>
+              <span>{selectedRegion?.name ?? region}</span>
+            </span>
+            <svg
+              className={`region-chevron${regionMenuOpen ? " is-open" : ""}`}
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+            >
+              <path d="m4 6 4 4 4-4" />
+            </svg>
+          </button>
+          {regionMenuOpen && (
+            <div
+              ref={regionMenuRef}
+              className="region-menu"
+              id="region-menu"
+              role="menu"
+              aria-label="Velg prisområde"
+              onKeyDown={moveRegionMenuFocus}
+            >
+              <p className="region-menu-heading">VELG PRISOMRÅDE</p>
+              {REGIONS.map((item) => {
+                const isSelected = item.code === region;
+                return (
+                  <button
+                    className={`region-option${isSelected ? " is-selected" : ""}`}
+                    key={item.code}
+                    type="button"
+                    tabIndex={-1}
+                    role="menuitemradio"
+                    aria-checked={isSelected}
+                    onClick={() => {
+                      setRegion(item.code);
+                      setRegionMenuOpen(false);
+                      regionTriggerRef.current?.focus();
+                    }}
+                  >
+                    <span className="region-option-code">{item.code}</span>
+                    <span className="region-option-name">{item.name}</span>
+                    {isSelected && (
+                      <svg
+                        className="region-option-check"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                      >
+                        <path d="m3.5 8.5 3 3 6-7" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </header>
 
       <section className="page-intro">
@@ -333,7 +466,7 @@ export default function HomePage() {
                 dataKey="price"
                 stroke="#167d73"
                 strokeWidth={3}
-                dot={{ r: 3, fill: "#167d73", strokeWidth: 0 }}
+                dot={TodayPriceDot}
                 activeDot={{ r: 6, strokeWidth: 0 }}
               />
             </LineChart>
@@ -393,6 +526,33 @@ export default function HomePage() {
         <span>Oppdatert daglig · inkl. mva der det gjelder</span>
       </footer>
     </main>
+  );
+}
+
+// Show a larger dot for the current hour in today's hourly chart
+function TodayPriceDot({ cx, cy, payload }: DotItemDotProps) {
+  if (typeof cx !== "number" || typeof cy !== "number") return null;
+
+  const isCurrentHour =
+    typeof payload === "object" &&
+    payload !== null &&
+    "isCurrentHour" in payload &&
+    payload.isCurrentHour === true;
+
+  return (
+    <g aria-hidden="true">
+      {isCurrentHour && (
+        <circle cx={cx} cy={cy} r={9} fill="#167d73" opacity={0.2} />
+      )}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={isCurrentHour ? 5 : 2.5}
+        fill="#167d73"
+        stroke={isCurrentHour ? "#fff" : "none"}
+        strokeWidth={isCurrentHour ? 2 : 0}
+      />
+    </g>
   );
 }
 
