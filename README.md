@@ -23,11 +23,13 @@ The data is retrieved from [hvakosterstrommen.no API](https://www.hvakosterstrom
 
 The dashboard requires price records in the Supabase `power_prices` table. See [`backend/README.md`](./backend/README.md) for backend setup and data-fetching instructions.
 
-## Continuous integration
+## CI/CD
 
 The `Test` GitHub Actions workflow runs on pushes and pull requests. It runs the Python unit tests, frontend tests, production dependency audit, lint, TypeScript check, and production build. These checks do not require real Supabase credentials.
 
 The separate `Fetch electricity prices` workflow runs on its daily schedule and can also be started manually in GitHub Actions. It requires the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` repository secrets.
+
+Vercel is used for deploying and hosting the application. It can be found here: strompris-chi.vercel.app
 
 ## Security
 

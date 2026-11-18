@@ -1,6 +1,6 @@
 # Strømblikk Backend
 
-The backend fetches hourly electricity prices from the [hvakosterstrommen.no API](https://www.hvakosterstrommen.no/strompris-api) for Norway's five price areas (NO1–NO5) and upserts them into Supabase.
+The backend fetches hourly electricity prices from the [hvakosterstrommen.no API](https://www.hvakosterstrommen.no/strompris-api) for Norway's five price regions (NO1–NO5) and upserts them into Supabase.
 
 ## Requirements
 
