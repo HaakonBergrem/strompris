@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Strømblikk Frontend
 
-## Getting Started
+The frontend is a Next.js application that displays electricity prices from the Supabase `power_prices` table.
 
-First, run the development server:
+## Requirements
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 22 (the version used by CI)
+- npm
+- A Supabase project with the `power_prices` table populated by the backend
+
+## Configuration
+
+Create `frontend/.env.local` with the public Supabase project URL and publishable key:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+These values are exposed to the browser by design. Do not put a Supabase service-role key or any other secret in a `NEXT_PUBLIC_` variable. The frontend `.gitignore` excludes environment files.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Configure Supabase Row Level Security (RLS) so browser clients can read only the required price data. The dashboard reads from `power_prices`, selecting `region`, `time_start`, `time_end`, and `power_price` for the selected region.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Install and run
 
-## Learn More
+From this directory:
 
-To learn more about Next.js, take a look at the following resources:
+```powershell
+npm ci
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open [http://localhost:3000](http://localhost:3000). The page reloads when source files change.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Available commands
 
-## Deploy on Vercel
+Run these commands from `frontend/`:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the local development server. |
+| `npm test` | Run the Vitest unit tests. |
+| `npm run lint` | Run ESLint. |
+| `npx tsc --noEmit` | Check TypeScript types without emitting files. |
+| `npm run build` | Create a production build. |
+| `npm start` | Serve the production build; run `npm run build` first. |
+| `npm audit --omit=dev --audit-level=moderate` | Audit production dependencies for moderate or higher severity vulnerabilities. |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Dashboard behavior
+
+- Users can choose among the five Norwegian price areas: NO1–NO5.
+- The dashboard shows today's hourly prices and recent daily averages.
+- Dates and hourly labels are interpreted in the `Europe/Oslo` time zone.
+- Displayed prices include VAT for all areas except NO4.
+- The hourly chart marks the hour that is currently in progress.
+
+The frontend queries up to 32 days of data to prepare the 30-day view. If prices are missing, check that the backend has populated `power_prices` and that the Supabase RLS policy allows the required read.
