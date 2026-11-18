@@ -29,7 +29,7 @@ The `Test` GitHub Actions workflow runs on pushes and pull requests. It runs the
 
 The separate `Fetch electricity prices` workflow runs on its daily schedule and can also be started manually in GitHub Actions. It requires the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` repository secrets.
 
-Vercel is used for deploying and hosting the application. It can be found here: strompris-chi.vercel.app
+Vercel is used for deploying and hosting the application. It can be found here: [strompris-chi.vercel.app](https://strompris-chi.vercel.app).
 
 ## Security
 
